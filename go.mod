@@ -108,3 +108,6 @@ require (
 	modernc.org/strutil v1.2.0 // indirect
 	modernc.org/token v1.1.0 // indirect
 )
+
+// Cópia local da biblioteca de chamadas com a correção de servidor de áudio por aparelho.
+replace github.com/purpshell/meowcaller => ./third_party/meowcaller

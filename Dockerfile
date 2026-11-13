@@ -6,6 +6,8 @@ WORKDIR /build
 
 # Copiar apenas arquivos de dependências primeiro para cachear o download
 COPY go.mod go.sum ./
+# A biblioteca de chamadas é uma cópia local (replace no go.mod): precisa existir antes do download
+COPY third_party ./third_party
 
 # whatsmeow agora vem do proxy oficial (go.mau.fi/whatsmeow, sem replace local) —
 # não há mais submódulo whatsmeow-lib para copiar.
