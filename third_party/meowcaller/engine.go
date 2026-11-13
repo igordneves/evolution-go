@@ -51,12 +51,12 @@ type engineCall struct {
 	selfLID string
 	peerLID string
 
-	// Outgoing 1:1 calls: every callee device gets its own relay addresses and echoes
-	// them in <relaylatency>. Media must land on the addresses of the device that
-	// actually answers, so it starts on <accept> and prefers that device's addresses.
+	// Outgoing 1:1 calls: every callee device reports its latency to each relay in
+	// <relaylatency>. Media must land on the relay the answering device ranks best, so
+	// it starts on <accept> and prefers that device's relays.
 	peerRelayProbes map[string][]rlProbe // keyed by the probing device JID
 	peerAccepted    bool
-	preferRelayAddr []string // "ip:port", best latency first
+	preferRelayAddr []string // relay names, the answering device's best latency first
 
 	creator types.JID // call-creator JID (for accept/relaylatency)
 	from    types.JID // the <call> "from" — where stanzas are addressed
@@ -890,14 +890,16 @@ func relayAddrKey(ab []byte) string {
 	return fmt.Sprintf("%d.%d.%d.%d:%d", ab[0], ab[1], ab[2], ab[3], binary.BigEndian.Uint16(ab[4:6]))
 }
 
-// preferredRelayAddrs lists the addresses the answering device probed, best latency first.
+// preferredRelayAddrs lists the relays (by name) the answering device probed, best latency
+// first. We send no latency probes of our own, so the callee elects its own best relay and
+// the media only bridges if we allocate on that same relay.
 func preferredRelayAddrs(probes []rlProbe) []string {
 	sorted := append([]rlProbe(nil), probes...)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].latency < sorted[j].latency })
 	out := make([]string, 0, len(sorted))
 	for _, p := range sorted {
-		if key := relayAddrKey(p.addr); key != "" {
-			out = append(out, key)
+		if p.relayName != "" {
+			out = append(out, p.relayName)
 		}
 	}
 	return out
@@ -987,8 +989,10 @@ func (e *engine) onAccept(ev *events.CallAccept) {
 		current.peerAccepted = true
 		current.preferRelayAddr = preferredRelayAddrs(current.peerRelayProbes[ev.From.String()])
 		devices := make([]string, 0, len(current.peerRelayProbes))
-		for device := range current.peerRelayProbes {
-			devices = append(devices, device)
+		for device, probes := range current.peerRelayProbes {
+			for _, p := range probes {
+				devices = append(devices, fmt.Sprintf("%s %s %dms %s", device, p.relayName, p.latency, relayAddrKey(p.addr)))
+			}
 		}
 		e.c.log.Info().
 			Str("call_id", ev.CallID).
@@ -1611,7 +1615,7 @@ type relayData struct {
 	relayTokens   [][]byte // indexed <token id=…>
 	endpoints     []relayEndpoint
 	peerJID       types.JID
-	prefer        []string // "ip:port" of the answering device's relays, best first
+	prefer        []string // relay names the answering device ranked, best first
 }
 
 func nodeBytes(n *waBinary.Node) []byte {
@@ -1761,7 +1765,7 @@ func getMediaRelayEndpoint(rd *relayData, inbound bool) *relayEndpoint {
 	for _, want := range rd.prefer {
 		for i := range rd.endpoints {
 			e := &rd.endpoints[i]
-			if len(e.addresses) > 0 && fmt.Sprintf("%s:%d", e.addresses[0].ipv4, e.addresses[0].port) == want {
+			if len(e.addresses) > 0 && e.relayName == want {
 				return e
 			}
 		}
