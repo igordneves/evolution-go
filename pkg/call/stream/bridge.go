@@ -34,6 +34,7 @@ type bridge struct {
 	sendVideo      func([]byte) error
 	startVideo     func() error
 	startVideoOnce sync.Once
+	firstReadOnce  sync.Once
 }
 
 func newBridge(conn *websocket.Conn) *bridge {
@@ -77,6 +78,23 @@ func (b *bridge) WriteVideo(accessUnit []byte) error {
 // ReadFrame implements meowcaller.AudioSource: frames the consumer sent back over the
 // socket, decoded by readLoop and handed here on demand.
 func (b *bridge) ReadFrame() ([]float32, error) {
+	// The call only starts pulling frames when the peer answers. Whatever the consumer
+	// sent while the phone was ringing is stale by then: playing it first would delay
+	// everything said afterwards by up to the whole buffer (~3 s). Drop it once and start
+	// from a silent frame, so the first packet goes out immediately.
+	first := false
+	b.firstReadOnce.Do(func() { first = true })
+	if first {
+		for {
+			select {
+			case <-b.incoming:
+				continue
+			default:
+			}
+			break
+		}
+		return make([]float32, meowcaller.FrameSamples), nil
+	}
 	select {
 	case frame, ok := <-b.incoming:
 		if !ok {
