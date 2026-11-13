@@ -12,6 +12,8 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+
+	"github.com/rs/zerolog"
 	"regexp"
 	"strconv"
 	"strings"
@@ -425,7 +427,9 @@ func (w whatsmeowService) StartClient(cd *ClientData) {
 
 	// meowcaller.NewClient must run before client.Connect() — it installs the raw
 	// <call> stanza adapter, and doing so after Connect() is a documented race.
-	meowcallerClient := meowcaller.NewClient(client)
+	// Log da biblioteca de chamadas na saída do serviço (sem isso ela não registra nada).
+	meowcallerLog := zerolog.New(os.Stdout).Level(zerolog.InfoLevel).With().Timestamp().Str("module", "meowcaller").Logger()
+	meowcallerClient := meowcaller.NewClient(client, meowcaller.WithLogger(meowcallerLog))
 	w.meowcallerPointer[cd.Instance.Id] = meowcallerClient
 	instanceID := cd.Instance.Id
 	meowcallerClient.OnIncomingCall(func(call *meowcaller.Call) {
