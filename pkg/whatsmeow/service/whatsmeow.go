@@ -414,6 +414,12 @@ func (w whatsmeowService) StartClient(cd *ClientData) {
 		}
 	}
 
+	// DeviceProps só vale no pareamento; o handshake usa a versão global da whatsmeow.
+	// Sem isso ele manda a versão fixa da lib e o WhatsApp responde "Client outdated (405)".
+	if version.Major != 0 {
+		store.SetWAVersion(store.WAVersionContainer{uint32(version.Major), uint32(version.Minor), uint32(version.Patch)})
+	}
+
 	// 🔒 FIX: Sempre criar logger, mesmo que WaDebug esteja vazio
 	// Usar "INFO" como nível mínimo para garantir que logs importantes apareçam
 	minLevel := w.config.WaDebug
